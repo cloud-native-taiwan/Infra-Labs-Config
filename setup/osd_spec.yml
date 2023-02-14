@@ -1,0 +1,30 @@
+service_type: osd
+unmanaged: True
+service_id: osd_spec_nvme
+placement:
+  host_pattern: '*'           
+spec:
+  data_devices:
+    rotational: 0
+    size: '3840G'
+  osds_per_device: 2
+
+---
+service_type: osd
+unmanaged: True
+service_id: osd_spec_hdd
+placement:
+  host_pattern: '*'
+spec:
+  data_devices:
+    rotational: 1
+---
+service_type: osd
+unmanaged: True
+service_id: osd_spec_sata_ssd
+placement:
+  host_pattern: '*'
+spec:
+  data_devices:
+    rotational: 0
+    size: '2000G'

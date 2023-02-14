@@ -1,0 +1,25 @@
+[all]
+openstack01 ansible_user=debian ansible_host=192.168.0.21
+openstack02 ansible_user=debian ansible_host=192.168.0.22
+openstack03 ansible_user=debian ansible_host=192.168.0.23
+
+#[local]
+#192.168.113.21 ansible_user=debian
+#192.168.113.30 ansible_user=debian
+#192.168.113.31 ansible_user=debian
+#192.168.113.32 ansible_user=debian
+
+[compute]
+openstack01 ansible_user=debian node_num=1 interface1=ens1f0np0 interface2=ens1f1np1
+openstack02 ansible_user=debian node_num=2 interface1=ens2f0np0 interface2=ens2f1np1
+openstack03 ansible_user=debian node_num=3 interface1=ens1f0np0 interface2=ens1f1np1
+
+[cephadm]
+openstack01 ansible_user=debian ansible_host=192.168.0.21
+
+[nvidia-vgpu]
+openstack01 ansible_user=debian ansible_host=192.168.0.21
+openstack02 ansible_user=debian ansible_host=192.168.0.22
+
+[pci-pass]
+openstack03 ansible_user=debian ansible_host=192.168.0.23

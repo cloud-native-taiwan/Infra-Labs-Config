@@ -1,0 +1,3 @@
+[submodule "setup/roles/bbr"]
+	path = setup/roles/bbr
+	url = https://github.com/devops-templates/ansible-roles-bbr.git

@@ -1,0 +1,11 @@
+[profile.nvidia-65]
+num_displays = 1          # Max number of virtual displays. Usually 1 if you want a simple remote gaming VM
+display_width = 3840      # Maximum display width in the VM
+display_height = 2160     # Maximum display height in the VM
+max_pixels = 8294400      # This is the product of display_width and display_height so 3840 * 2160 = 2073600
+cuda_enabled = 1          # Enables CUDA support. Either 1 or 0 for enabled/disabled
+frl_enabled = 0           # This controls the frame rate limiter, if you enable it your fps in the VM get locked to 60fps. Either 1 or 0 for enabled/disabled
+
+# vGPU spoofing
+pci_device_id = 0x1BB0
+pci_id = 0x1BB011B2

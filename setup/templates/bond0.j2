@@ -1,0 +1,14 @@
+auto bond0
+
+iface bond0 inet static
+    address 192.168.113.{{ node_num + 10 }}/24
+    netmask 255.255.255.0
+    slaves eno2 eno3
+    bond-mode 4
+    bond-miimon 100
+    bond-downdelay 200
+    bond-updelay 200
+    bond-xmit-hash-policy layer3+4
+
+auto bond0.2116
+iface bond0.2116 inet manual

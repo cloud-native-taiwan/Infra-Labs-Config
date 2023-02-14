@@ -1,4 +1,8 @@
 passwords.yml
+nvidia.yml
+vgpu_override.toml
+prometheus-alertmanager.yml
 *.pem
 *.keyring
 *.sh
+*.run

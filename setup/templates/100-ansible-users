@@ -1,0 +1,5 @@
+# Created by Ansible
+
+# User rules for debian
+admin ALL=(ALL) NOPASSWD:ALL
+debian ALL=(ALL) NOPASSWD:ALL

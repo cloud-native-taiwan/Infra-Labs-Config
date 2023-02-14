@@ -1,0 +1,192 @@
+---
+- hosts: all
+  become: true
+  tasks:
+  - name: Update kernel parameters
+    sysctl:
+      name: '{{ item.key }}'
+      value: '{{ item.value }}'
+      sysctl_set: yes
+      state: present
+      reload: yes
+    with_dict: '{{ sysctl_config }}'
+
+- hosts: compute
+  become: true
+  tasks:
+  - name: deploy ssh keys
+    template:
+      src: templates/authorized_keys
+      dest: /home/debian/.ssh/authorized_keys
+      owner: debian
+      group: debian
+      mode: 0600
+
+  - name: deploy resolved.conf template
+    template:
+      src: templates/resolved.conf.j2
+      dest: /etc/systemd/resolved.conf
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Make sure a service unit is running
+    ansible.builtin.systemd:
+      state: restarted
+      name: systemd-resolved
+      enabled: yes
+
+#  - name: Add hostname to /etc/hosts
+#    lineinfile:
+#      dest: /etc/hosts
+#      regexp: '.*{{ item }}$'
+#      line: "{{ hostvars[item].ansible_host }} {{item}}.ty7.cloudnative.tw {{item}}"
+#      state: absent
+#    when: hostvars[item].ansible_host is defined
+#    with_items: "{{ groups.all }}"
+
+- hosts: remote
+  become: true
+  tasks:
+  - name: Add debian User
+    ansible.builtin.user:
+      name: debian
+      shell: /bin/bash
+      groups: sudo
+      append: yes
+
+  - name: Set a hostname
+    ansible.builtin.hostname:
+      name: "{{ hostname }}"
+
+  - name: deploy sudoers file
+    template:
+      src: templates/100-ansible-users
+      dest: /etc/sudoers
+      owner: root
+      group: root
+      mode: 440
+
+  - name: Install Packages
+    apt:
+      name:
+      - locales
+      state: present
+      update_cache: yes
+
+  - name: Remove Python2
+    apt:
+      name:
+      - python
+      state: absent
+      update_cache: yes
+
+  - name: Install packages
+    apt:
+      name:
+      - locales-all
+      state: present
+      update_cache: yes
+
+  - name: Make Python3 defualt
+    shell: 
+      cmd: update-alternatives --install /usr/bin/python python /usr/bin/python3 2
+    args:
+      executable: /bin/bash
+
+- hosts: compute
+  become: true
+  serial: true
+  tasks:
+  - name: Create a .ssh if it does not exist
+    ansible.builtin.file:
+      path: /home/debian/.ssh
+      state: directory
+      mode: '0700'
+      owner: debian
+      group: debian
+
+  - name: deploy ssh keys
+    template:
+      src: templates/authorized_keys
+      dest: /home/debian/.ssh/authorized_keys
+      owner: debian
+      group: debian
+      mode: 0600
+
+  - name: Install Packages
+    apt:
+      name:
+      - vim
+      - iputils-ping
+      - ifenslave
+      - ethtool
+      - lvm2
+      - htop
+      - iotop
+      - nload
+      - linux-cpupower
+      state: present
+      update_cache: yes
+
+  - name: Upgrade all apt packages
+    apt: upgrade=dist force_apt_get=yes
+
+  - name: Set cpupower to performance
+    shell: 
+      cmd: cpupower frequency-set -g schedutil
+    args:
+      executable: /bin/bash
+
+
+- hosts: compute
+  become: true
+  tasks:
+  - name: deploy ens1np0 template
+    template:
+      src: templates/ens1np0.j2
+      dest: /etc/network/interfaces.d/ens1np0
+      owner: root
+      group: root
+      mode: 0644
+    register: ens1np0
+
+  - name: Restart network service for interface ens1np0
+    ansible.builtin.service:
+      name: networking
+      state: restarted
+      args: 
+        - ens1np0
+        - ens1np0.1115
+        - ens1np0.100
+        - ens1np0.101
+        - ens1np0.1113
+    when: ens1np0.changed
+
+  - name: deploy kvm nested
+    template:
+      src: templates/nested.j2
+      dest: /etc/modprobe.d/kvm.conf
+      owner: root
+      group: root
+      mode: 0644
+
+- hosts: cephadm
+  become: true
+  tasks:
+  - name: Download cephadm
+    get_url:
+      url: https://github.com/ceph/ceph/raw/pacific/src/cephadm/cephadm
+      dest: /tmp/
+      mode: 0755
+
+  - name: Add Ceph Repo
+    shell: ./cephadm add-repo --release pacific
+    args:
+      chdir: /tmp/
+
+  - name: Install Ceph Packates
+    become: true
+    shell: ./cephadm install
+    args:
+      chdir: /tmp/
