@@ -1,0 +1,47 @@
+---
+- hosts: pci-pass
+  become: true
+  tasks:
+  - name: enable vfio module in boot
+    blockinfile:
+      dest: /etc/modules-load.d/modules.conf
+      block: |
+        vfio
+        vfio_iommu_type1
+        vfio_pci
+        vfio_virqfd
+
+  - name: Create blacklist config
+    ansible.builtin.file:
+      path: /etc/modprobe.d/blacklist.conf
+      state: touch
+      mode: '0644'
+      owner: root
+      group: root
+
+  - name: blacklist nvidia module in boot
+    blockinfile:
+      dest: /etc/modprobe.d/blacklist.conf
+      block: |
+        blacklist nouveau
+
+  - name: Check if IOMMU is enabled
+    lineinfile:
+      backup: true
+      path: /etc/default/grub
+      regexp: '^GRUB_CMDLINE_LINUX=".*amd_iommu=on iommu=pt.*'
+      state: absent
+    check_mode: true
+    register: grub_cmdline_check
+    changed_when: false
+
+  - name: Enable IOMMU
+    lineinfile:
+      backrefs: true
+      path: /etc/default/grub
+      regexp: "^(GRUB_CMDLINE_LINUX=\".*)\"$"
+      line: '\1 amd_iommu=on iommu=pt"'
+    when: grub_cmdline_check.found == 0
+
+  - name: update-grub
+    shell: update-grub2

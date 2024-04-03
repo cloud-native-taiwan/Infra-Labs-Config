@@ -1,0 +1,258 @@
+---
+#- hosts: arm
+#  become: true
+#  tasks:
+#  - name: Install Python3
+#    ansible.builtin.raw: apt update && apt install python3 -y
+#    args:
+#      executable: /bin/bash
+#- hosts: all
+#  become: true
+#  serial: 1
+#  tasks:
+#  - name: Upgrade all apt packages
+#    apt: upgrade=dist force_apt_get=yes
+
+
+- hosts: all
+  become: true
+  tasks:
+  - name: Update kernel parameters
+    sysctl:
+      name: '{{ item.key }}'
+      value: '{{ item.value }}'
+      sysctl_set: yes
+      state: present
+      reload: yes
+    with_dict: '{{ sysctl_config }}'
+    ignore_errors: true
+
+  - name: Create a .ssh if it does not exist
+    ansible.builtin.file:
+      path: /home/debian/.ssh
+      state: directory
+      mode: '0700'
+      owner: debian
+      group: debian
+
+  - name: deploy ssh keys
+    template:
+      src: templates/authorized_keys
+      dest: /home/debian/.ssh/authorized_keys
+      owner: debian
+      group: debian
+      mode: 0600
+
+  - name: Install Packages
+    apt:
+      name:
+      - vim
+      - iputils-ping
+      - ifenslave
+      - ethtool
+      - lvm2
+      - htop
+      - iotop
+      - nload
+      - linux-cpupower
+      - chrony
+      - ipmitool
+      - nvme-cli
+      - bsd-mailx
+      - unattended-upgrades
+      state: present
+      update_cache: yes
+
+  - name: Use Japan pool for NTP
+    ansible.builtin.replace:
+      path: /etc/chrony/chrony.conf
+      regexp: 'pool 2.debian.pool.ntp.org iburst'
+      replace: 'pool 0.jp.pool.ntp.org iburst'
+    register: chrony
+
+  - name: Restart chrony
+    ansible.builtin.systemd:
+      state: restarted
+      name: chrony
+      enabled: yes
+    when: chrony.changed
+
+  - name: Set cpupower to performance
+    shell: 
+      cmd: cpupower frequency-set -g schedutil
+    args:
+      executable: /bin/bash
+    ignore_errors: true
+   
+  - name: Set congestion to bbr
+    include_role:
+      name: 'bbr'
+
+  - name: Deploy unattended-upgrades config
+    template:
+      src: templates/50unattended-upgrades.j2
+      dest: /etc/apt/apt.conf.d/50unattended-upgrades
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Deploy exim config
+    template:
+      src: templates/update-exim4.conf.conf.j2
+      dest: /etc/exim4/update-exim4.conf.conf
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Deploy exim password
+    template:
+      src: templates/passwd.client.j2
+      dest: /etc/exim4/passwd.client
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Add mailname
+    copy:
+      content: "cloudnative.tw"
+      dest: /etc/mailname
+      force: true
+
+  - name: Update exim config
+    shell: 
+      cmd: update-exim4.conf
+    args:
+      executable: /bin/bash
+
+- hosts: compute
+  become: true
+  tasks:
+  - name: deploy ssh keys
+    template:
+      src: templates/authorized_keys
+      dest: /home/debian/.ssh/authorized_keys
+      owner: debian
+      group: debian
+      mode: 0600
+
+  - name: deploy resolved.conf template
+    template:
+      src: templates/resolved.conf.j2
+      dest: /etc/systemd/resolved.conf
+      owner: root
+      group: root
+      mode: 0644
+
+- hosts: arm
+  become: true
+  tasks:
+  - name: Add debian User
+    ansible.builtin.user:
+      name: debian
+      shell: /bin/bash
+      groups: sudo
+      append: yes
+
+  - name: deploy sudoers file
+    template:
+      src: templates/100-ansible-users
+      dest: /etc/sudoers
+      owner: root
+      group: root
+      mode: 440
+
+  - name: Install Packages
+    apt:
+      name:
+      - locales
+      - locales-all
+      - pciutils
+      state: present
+      update_cache: yes
+
+  - name: Remove Python2
+    apt:
+      name:
+      - python
+      state: absent
+      update_cache: yes
+
+  - name: Make Python3 defualt
+    shell: 
+      cmd: update-alternatives --install /usr/bin/python python /usr/bin/python3 2
+    args:
+      executable: /bin/bash
+
+  - name: deploy bond0 template
+    template:
+      src: templates/bond0.j2
+      dest: /etc/network/interfaces.d/bond0
+      owner: root
+      group: root
+      mode: 0644
+    register: bond0
+
+  - name: Restart network service for interface bond0
+    ansible.builtin.service:
+      name: networking
+      state: restarted
+      args: 
+        - bond0
+        - bond0.1115
+        - bond0.100
+        - bond0.101
+        - bond0.1113
+    when: bond0.changed
+
+
+- hosts: compute
+  become: true
+  tasks:
+  - name: deploy bond0 template
+    template:
+      src: templates/bond0.j2
+      dest: /etc/network/interfaces.d/bond0
+      owner: root
+      group: root
+      mode: 0644
+    register: bond0
+
+  - name: Restart network service for interface bond0
+    ansible.builtin.service:
+      name: networking
+      state: restarted
+      args: 
+        - bond0
+        - bond0.1115
+        - bond0.100
+        - bond0.101
+        - bond0.1113
+    when: bond0.changed
+
+  - name: deploy kvm nested
+    template:
+      src: templates/nested.j2
+      dest: /etc/modprobe.d/kvm.conf
+      owner: root
+      group: root
+      mode: 0644
+
+- hosts: cephadm
+  become: true
+  tasks:
+  - name: Download cephadm
+    get_url:
+      url: https://github.com/ceph/ceph/raw/pacific/src/cephadm/cephadm
+      dest: /tmp/
+      mode: 0755
+
+  - name: Add Ceph Repo
+    shell: ./cephadm add-repo --release pacific
+    args:
+      chdir: /tmp/
+
+  - name: Install Ceph Packates
+    become: true
+    shell: ./cephadm install
+    args:
+      chdir: /tmp/

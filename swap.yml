@@ -1,0 +1,73 @@
+- hosts: all
+  become: true
+  tasks:
+  - name: set swap_file variable
+    set_fact:
+      swap_file: /swapfile.swap
+
+  - name: check if swap file exists
+    stat:
+      path: "{{ swap_file }}"
+    register: swap_file_check
+
+  - name: create swap file
+    command: fallocate -l 8G {{ swap_file }}
+    when: not swap_file_check.stat.exists
+
+  - name: Create swap space
+    command: dd if=/dev/zero of=/extraswap bs=1M count=8192
+    when: not swap_file_check.stat.exists
+
+  - name: set permissions on swap file
+    file:
+      path: "{{ swap_file }}"
+      mode: 0600
+
+  - name: format swap file
+    command: /usr/sbin/mkswap {{ swap_file }}
+    when: not swap_file_check.stat.exists
+
+  - name: add to fstab
+    lineinfile:
+      dest: /etc/fstab
+      regexp: "{{ swap_file }}"
+      line: "{{ swap_file }} none swap sw 0 0"
+
+  - name: turn on swap
+    command: /usr/sbin/swapon -a
+
+  - name: set swapiness
+    sysctl:
+      name: vm.swappiness
+      value: "80"
+
+  - name: Check if zswap is enabled
+    lineinfile:
+      backup: true
+      path: /etc/default/grub
+      regexp: '^GRUB_CMDLINE_LINUX=".*zswap.enabled=1.*'
+      state: absent
+    check_mode: true
+    register: grub_cmdline_check
+    changed_when: false
+
+  - name: Enable zswap at boot
+    lineinfile:
+      backrefs: true
+      path: /etc/default/grub
+      regexp: "^(GRUB_CMDLINE_LINUX=\".*)\"$"
+      line: '\1 zswap.enabled=1 zswap.compressor=zstd zswap.max_pool_percent=25 zswap.zpool=z3fold"'
+    when: grub_cmdline_check.found == 0
+
+  - name: update-grub
+    command: /usr/sbin/update-grub2
+
+  - name: Add Modules to Kernel
+    lineinfile:
+      dest: /etc/initramfs-tools/modules
+      regexp: "zstd"
+      line: "zstd\nz3fold"
+
+  - name: Update initramfs
+    command: update-initramfs -u
+

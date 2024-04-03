@@ -1,0 +1,16 @@
+- hosts: all
+  become: true
+  serial: 1
+  tasks:
+  - name: Upgrade all apt packages
+    apt:
+      upgrade: dist
+      update_cache: yes
+      dpkg_options: 'force-confold,force-confdef'
+
+  - name: Remove Unused Packages
+    apt: autoremove=true
+
+  - name: Pause for 30 seconds waiting for container
+    ansible.builtin.pause:
+      seconds: 30
