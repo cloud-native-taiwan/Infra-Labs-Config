@@ -1,19 +1,4 @@
 ---
-#- hosts: arm
-#  become: true
-#  tasks:
-#  - name: Install Python3
-#    ansible.builtin.raw: apt update && apt install python3 -y
-#    args:
-#      executable: /bin/bash
-#- hosts: all
-#  become: true
-#  serial: 1
-#  tasks:
-#  - name: Upgrade all apt packages
-#    apt: upgrade=dist force_apt_get=yes
-
-
 - hosts: all
   become: true
   tasks:
@@ -96,10 +81,27 @@
       group: root
       mode: 0644
 
+  - name: Redirect root emails to user@aaa.com in /etc/aliases
+    lineinfile:
+      path: /etc/aliases
+      line: "root: infra@cloudnative.tw"
+      state: present
+
+  - name: Run newaliases to apply changes
+    command: newaliases
+
   - name: Deploy exim config
     template:
       src: templates/update-exim4.conf.conf.j2
       dest: /etc/exim4/update-exim4.conf.conf
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Deploy root redirect config
+    template:
+      src: templates/050_custom_root_redirect
+      dest: /etc/exim4/conf.d/router/050_custom_root_redirect
       owner: root
       group: root
       mode: 0644
@@ -124,17 +126,15 @@
     args:
       executable: /bin/bash
 
+  - name: Restart exim4
+    ansible.builtin.systemd:
+      state: restarted
+      name: exim4
+      enabled: yes
+
 - hosts: compute
   become: true
   tasks:
-  - name: deploy ssh keys
-    template:
-      src: templates/authorized_keys
-      dest: /home/debian/.ssh/authorized_keys
-      owner: debian
-      group: debian
-      mode: 0600
-
   - name: deploy resolved.conf template
     template:
       src: templates/resolved.conf.j2
@@ -242,12 +242,12 @@
   tasks:
   - name: Download cephadm
     get_url:
-      url: https://github.com/ceph/ceph/raw/pacific/src/cephadm/cephadm
+      url: https://download.ceph.com/rpm-19.2.0/el9/noarch/cephadm
       dest: /tmp/
       mode: 0755
 
   - name: Add Ceph Repo
-    shell: ./cephadm add-repo --release pacific
+    shell: ./cephadm add-repo --release squid
     args:
       chdir: /tmp/
 
